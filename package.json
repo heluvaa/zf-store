@@ -1,0 +1,25 @@
+{
+  "name": "zf-store",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ZF Store - backend toko produk digital: katalog, stok FIFO, order, ledger, webhook QRIS Gateway",
+  "engines": { "node": ">=22.6" },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "test:watch": "node --test --watch test/*.test.ts",
+    "check": "tsc --noEmit",
+    "start": "node --env-file=.env src/web/main.ts",
+    "smoke": "node scripts/smoke.ts",
+    "seed": "node --env-file=.env scripts/seed.ts",
+    "migrate": "node --env-file=.env scripts/migrate.ts"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.9.3"
+  }
+}

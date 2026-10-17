@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "brand": "ZF Store",
+    "demo": true,
+    "note": "Katalog CONTOH. Ganti nama, harga, cost, dan S&K dengan barang asli. `cost` = harga beli (tidak pernah dikirim ke pembeli) dan dipakai menghitung laba."
+  },
+  "products": [
+    {
+      "id": "p_stream",
+      "slug": "voucher-streaming",
+      "name": "Voucher Streaming",
+      "description": "Voucher langganan 30 hari untuk 1 perangkat. Kode dikirim otomatis setelah pembayaran lunas.",
+      "active": true,
+      "sort": 1,
+      "variants": [
+        {
+          "id": "v_stream_1m",
+          "name": "1 Bulan",
+          "price": 25000,
+          "cost": 19000,
+          "warranty": "Garansi 1x24 jam untuk kode yang tidak bisa dipakai.",
+          "terms": "Wajib video unboxing/percobaan saat klaim garansi. Kode yang sudah dipakai di perangkat lain tidak bisa direfund."
+        },
+        {
+          "id": "v_stream_3m",
+          "name": "3 Bulan",
+          "price": 65000,
+          "cost": 51000,
+          "warranty": "Garansi 1x24 jam untuk kode yang tidak bisa dipakai.",
+          "terms": "Wajib video unboxing/percobaan saat klaim garansi. Kode yang sudah dipakai di perangkat lain tidak bisa direfund.",
+          "tiers": [{ "minQty": 3, "unitPrice": 60000 }]
+        }
+      ]
+    },
+    {
+      "id": "p_topup",
+      "slug": "topup-game",
+      "name": "Top Up Game",
+      "description": "Diamond/gems masuk otomatis ke User ID. Isi User ID di kolom kontak saat checkout.",
+      "active": true,
+      "sort": 2,
+      "variants": [
+        {
+          "id": "v_topup_100",
+          "name": "100 Diamond",
+          "price": 15000,
+          "cost": 12500,
+          "warranty": "Garansi 1x24 jam kalau item tidak masuk.",
+          "terms": "Pastikan User ID benar. Salah User ID bukan tanggung jawab penjual.",
+          "tiers": [{ "minQty": 5, "unitPrice": 14000 }]
+        },
+        {
+          "id": "v_topup_500",
+          "name": "500 Diamond",
+          "price": 68000,
+          "cost": 60000,
+          "warranty": "Garansi 1x24 jam kalau item tidak masuk.",
+          "terms": "Pastikan User ID benar. Salah User ID bukan tanggung jawab penjual."
+        }
+      ]
+    },
+    {
+      "id": "p_voucher_wifi",
+      "slug": "voucher-wifi",
+      "name": "Voucher WiFi Harian",
+      "description": "Voucher WiFi 24 jam. Contoh produk yang sedang dimatikan — tetap ada di data, tidak dijual.",
+      "active": false,
+      "sort": 3,
+      "variants": [
+        {
+          "id": "v_wifi_1d",
+          "name": "24 Jam",
+          "price": 5000,
+          "cost": 3000,
+          "warranty": "Garansi sampai voucher bisa dipakai.",
+          "terms": "Berlaku di jaringan yang tertera di voucher."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { bootstrap } from "../src/app/bootstrap.ts";
+import type { NewStockItem } from "../src/repos/types.ts";
+
+/**
+ * Isi stok massal dari data/stock.seed.json:
+ *   [{ "variantId": "v_stream_1m", "payload": "KODE-XXXX", "cost": 19000 }]
+ * `cost` boleh dikosongkan: harga `cost` varian dari katalog yang dipakai.
+ */
+const seedPath = process.argv[2] ?? path.join(process.cwd(), "data", "stock.seed.json");
+
+const raw = await readFile(seedPath, "utf8").catch(() => {
+  console.error(`file seed tidak terbaca: ${seedPath}`);
+  process.exit(1);
+});
+
+const items = JSON.parse(raw) as NewStockItem[];
+if (!Array.isArray(items) || items.length === 0) {
+  console.error("seed harus array dan tidak kosong");
+  process.exit(1);
+}
+
+const boot = await bootstrap();
+try {
+  const { products } = await boot.service.catalog();
+  const variants = new Map(products.flatMap((p) => p.variants).map((v) => [v.id, v]));
+  const filled: NewStockItem[] = [];
+  for (const item of items) {
+    const variant = variants.get(item.variantId);
+    if (!variant) console.warn(`peringatan: varian ${item.variantId} tidak ada di katalog aktif`);
+    filled.push({
+      variantId: item.variantId,
+      payload: item.payload,
+      cost: Number.isInteger(item.cost) ? item.cost : variant?.price ?? 0,
+    });
+  }
+  const count = await boot.service.addStock(filled);
+  console.log(`stok ditambahkan: ${count} item`);
+  console.log(`stok tersedia: ${JSON.stringify(await boot.service.stockAvailable())}`);
+  console.log(`storage: ${boot.service.storage.backend} (durable=${boot.service.storage.durable})`);
+} finally {
+  await boot.close();
+}
