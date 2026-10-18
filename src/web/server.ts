@@ -3,6 +3,7 @@ import { DomainError } from "../core/errors.ts";
 import { rp } from "../core/money.ts";
 import type { StoreService } from "../app/service.ts";
 import { adminPanelHtml } from "./admin-html.ts";
+import { storefrontHtml } from "./storefront.ts";
 import { publicOrder, publicProduct } from "./views.ts";
 
 export interface HandlerDeps {
@@ -110,6 +111,11 @@ export function createRequestHandler(deps: HandlerDeps) {
 
     try {
       // ── Publik ─────────────────────────────────────────────
+      if (path === "/" && method === "GET") {
+        sendHtml(res, 200, storefrontHtml(deps.brand));
+        return;
+      }
+
       if (path === "/health" && method === "GET") {
         sendJson(res, 200, {
           ok: true,

@@ -192,7 +192,7 @@ export function adminPanelHtml(brand: string): string {
       '<div><label>Deskripsi</label><textarea name="description">' + esc(p.description) + "</textarea></div>" +
       '<div class="row"><div><label>Urutan</label><input name="sort" type="number" value="' + esc(p.sort || 0) + '"></div>' +
       '<div><label>Status</label><select name="active"><option value="true"' + (p.active !== false ? " selected" : "") +
-      ">Dijual</option><option value=\"false\"" + (p.active === false ? " selected" : "") + ">Disembunyikan</option></select></div></div>" +
+      ">Dijual</" + "option><option value=\\"false\\"" + (p.active === false ? " selected" : "") + ">Disembunyikan</" + "option></select></div></div>" +
       '<div id="variants"></div>' +
       '<div><button type="button" class="btn sm" id="addv">+ Varian</button></div>' +
       '<div class="row"><button class="btn p" type="submit">Simpan</button>' +

@@ -300,3 +300,29 @@ test("admin: daftar pembayaran kosong lalu terisi setelah lunas", async (t) => {
   assert.equal(after.payments.length, 1);
   assert.equal(after.payments[0].orderCode, created.orderCode);
 });
+
+// ── Gerai publik (/) ────────────────────────────────────────
+
+test("storefront: halaman / menyajikan HTML berisi brand, tanpa membocorkan cost", async (t) => {
+  const rig = await makeRig({ seed: seedFor("v1", 2) });
+  const server = await startServer(rig.service, { brand: "ZF Store" });
+  t.after(() => server.close());
+
+  const res = await fetch(`${server.url}/`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") ?? "", /text\/html/);
+  const html = await res.text();
+  assert.match(html, /ZF Store/);
+  assert.match(html, /\/api\/catalog/, "halaman memuat katalog lewat API");
+  assert.match(html, /QRIS/i);
+  assert.ok(!html.includes('"cost"'), "cost tidak ada di markup halaman");
+});
+
+test("storefront: / tetap HTML meski query ada (tautan status /?order=CODE)", async (t) => {
+  const rig = await makeRig();
+  const server = await startServer(rig.service);
+  t.after(() => server.close());
+  const res = await fetch(`${server.url}/?order=ZF-20261018-001#t=abc`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") ?? "", /text\/html/);
+});
