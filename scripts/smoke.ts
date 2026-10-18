@@ -18,7 +18,7 @@ import { createRequestHandler } from "../src/web/server.ts";
  */
 process.env.STORE_PUBLIC_URL ??= "http://127.0.0.1:3199";
 process.env.STORE_QRIS_URL ??= "https://qris-gateway.nybaee888.workers.dev";
-process.env.STORE_QRIS_SECRET = process.env.QH ?? process.env.STORE_QRIS_SECRET ?? "";
+process.env.STORE_QRIS_SECRET ??= process.env.QH ?? "";
 process.env.STORE_CALLBACK_SECRET ??= "smoke-callback-secret-1234567890";
 process.env.STORE_SWEEP_SECRET ??= "smoke-sweep-secret-1234567890";
 process.env.STORE_ADMIN_KEY ??= "smoke-admin-key-1234567890";

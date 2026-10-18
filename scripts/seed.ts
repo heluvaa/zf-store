@@ -15,9 +15,10 @@ const raw = await readFile(seedPath, "utf8").catch(() => {
   process.exit(1);
 });
 
-const items = JSON.parse(raw) as NewStockItem[];
+const parsed = JSON.parse(raw) as NewStockItem[] | { items: NewStockItem[] };
+const items = Array.isArray(parsed) ? parsed : parsed?.items;
 if (!Array.isArray(items) || items.length === 0) {
-  console.error("seed harus array dan tidak kosong");
+  console.error("seed harus array stok (atau { items: [...] }) dan tidak kosong");
   process.exit(1);
 }
 

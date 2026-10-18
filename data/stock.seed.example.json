@@ -1,0 +1,5 @@
+[
+  { "variantId": "v_stream_1m", "payload": "CONTOH-STREAM-1BULAN-A", "cost": 19000 },
+  { "variantId": "v_stream_1m", "payload": "CONTOH-STREAM-1BULAN-B", "cost": 19000 },
+  { "variantId": "v_topup_100", "payload": "CONTOH-TOPUP-100-A", "cost": 12500 }
+]

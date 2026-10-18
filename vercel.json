@@ -2,7 +2,7 @@
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
   "functions": {
     "api/index.ts": {
-      "includeFiles": "data/**",
+      "includeFiles": "{src,data}/**",
       "maxDuration": 30
     }
   },

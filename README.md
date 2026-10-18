@@ -75,6 +75,20 @@ Tabel: `zf_stock`, `zf_orders` (payload JSONB + kolom status/invoice_id), `zf_le
 `zf_payments`, `zf_seq`. Repo Postgres memverifikasi tabelnya ada saat boot dan gagal cepat
 dengan pesan `SCHEMA_MISSING` kalau belum dimigrasi.
 
+### Alamat Supabase dari Termux
+
+Host langsung (`db.<ref>.supabase.co`) hanya punya alamat **IPv6**, dan Termux/Android di
+HP ini tidak punya rute IPv6 — koneksinya gagal `ENOTFOUND`. Pakai **pooler** (IPv4):
+
+```
+postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres
+```
+
+- `<region>` ditentukan oleh project, bukan tebakan — kalau salah, error-nya
+  `tenant/user postgres.<ref> not found`. Project ini: **ap-south-1**.
+- Port **6543** = transaction mode (cocok untuk serverless/banyak instans),
+  port 5432 = session mode. Keduanya menerima `BEGIN/COMMIT` eksplisit.
+
 ## Deploy ke Vercel
 
 1. Import repo ini di Vercel (framework: **Other**). `vercel.json` sudah menangani:
