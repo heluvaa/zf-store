@@ -32,13 +32,22 @@ npm run smoke   # uji asap: bikin invoice SUNGGUHAN di gateway + callback bertan
 | `/api/pay/callback` | POST | HMAC `X-Callback-Signature` | callback gateway (dipakai worker, bukan browser) |
 | `/internal/sweep` | POST/GET | `x-sweep-key` atau `Authorization: Bearer <secret>` | expire order + lanjutkan kirim yang macet (cron) |
 | `/api/admin/report` | GET | `x-admin-key` | ledger (omzet/biaya/HPP/laba) + 20 order terakhir |
+| `/admin` | GET | kunci diisi di browser | panel admin: ringkasan laba, kelola katalog, isi stok, pesanan, pembayaran |
+| `/api/admin/catalog` | GET | `x-admin-key` | katalog penuh (termasuk non-aktif + `cost`) |
+| `/api/admin/products` | POST | `x-admin-key` | tambah/ubah produk (validasi: modal < harga, varian wajib) |
+| `/api/admin/products/:slug/active` | POST | `x-admin-key` | sembunyikan/tampilkan produk |
+| `/api/admin/products/:slug` | DELETE | `x-admin-key` | hapus produk (409 kalau masih ada stok) |
+| `/api/admin/stock` | GET/POST | `x-admin-key` | daftar isi stok (payload disamarkan) / isi stok massal |
+| `/api/admin/payments` | GET | `x-admin-key` | daftar pembayaran yang masuk |
+| `/api/admin/orders/:code/cancel` | POST | `x-admin-key` | batalkan order, stok kembali |
+| `/api/admin/sweep` | POST | `x-admin-key` | jalan sweep manual dari panel |
 
 `POST /api/orders` membalas `201` + `{orderCode, accessToken, quote, pay:{invoiceId, chargedAmount, qrisUrl}}`.
 Yang ditampilkan ke pembeli = `chargedAmount` (harga + kode unik dari gateway), bukan `amount`.
 
 ## Aturan yang dipegang kode ini
 
-- **Harga dihitung ulang di server** dari `data/catalog.json`. Harga/total dari klien dibuang.
+- **Harga dihitung ulang di server** dari katalog (DB `zf_products` di produksi; `data/catalog.json` hanya seed awal saat tabel kosong). Harga/total dari klien dibuang.
 - **Uang integer rupiah**, persen lewat basis point (`applyBps`), format `Rp 22.255.985`.
 - **Stok = compare-and-swap.** Reservasi FIFO satu statement; gagal = tidak ada yang tertahan.
   Di Postgres jumlah-tersedia dan UPDATE dicek di snapshot yang sama, jadi tak mungkin separuh jalan.
@@ -99,15 +108,16 @@ postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/p
    `STORE_CALLBACK_SECRET`, `STORE_SWEEP_SECRET` (juga dipakai sebagai `CRON_SECRET`),
    `STORE_ADMIN_KEY`, `STORE_DATABASE_URL`.
 3. Migrasi DB (lihat di atas) sebelum trafik pertama.
-4. Isi stok: `npm run seed` (lihat `data/stock.seed.json`) atau endpoint admin (belum ada UI).
+4. Isi stok: lewat panel admin `/admin` (tab Stok) atau `npm run seed` (lihat `data/stock.seed.json`).
 5. **Bukan andalan cron:** Hobby hanya mengizinkan jadwal harian. Karena itu `api/index.ts`
    menjalankan sweep *lazy* (maks sekali per menit, ditunggu — bukan kerja latar yang bisa
    dibekukan serverless) dan cron jadi jaring pengaman.
 
 ## Yang wajib diisi pemilik toko sebelum jualan
 
-1. `data/catalog.json` — masih **contoh** (`meta.demo: true`). Ganti nama, harga, `cost`, S&K.
-   `cost` = harga beli; dipakai menghitung laba, tidak pernah dikirim ke pembeli.
+1. **Katalog**: produk dikelola lewat panel admin `/admin` (tersimpan di DB). `data/catalog.json`
+   hanya seed awal — sekali jalan saat tabel produk masih kosong. `cost` = harga beli; dipakai
+   menghitung laba, tidak pernah dikirim ke pembeli.
 2. **MDR QRIS di `src/core/pricing.ts` masih placeholder** (`GATEWAY_RATES_ARE_PLACEHOLDER = true`,
    0,7%). Ganti dengan angka dari akun merchant sendiri, lalu ubah flag-nya — ada test yang gagal
    kalau flag dinyatakan nyata tapi angkanya masih 70 bps.

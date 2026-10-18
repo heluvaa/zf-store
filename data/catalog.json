@@ -1,8 +1,7 @@
 {
   "meta": {
     "brand": "ZF Store",
-    "demo": true,
-    "note": "Katalog CONTOH. Ganti nama, harga, cost, dan S&K dengan barang asli. `cost` = harga beli (tidak pernah dikirim ke pembeli) dan dipakai menghitung laba."
+    "note": "Katalog aktif. Kelola produk, harga, dan stok lewat panel admin /admin — tidak perlu sentuh file ini lagi setelah katalog tersimpan di database."
   },
   "products": [
     {

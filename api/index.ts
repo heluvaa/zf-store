@@ -26,7 +26,6 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     adminKey: ready.config.adminKey,
     sweepSecret: ready.config.sweepSecret,
     brand: ready.brand,
-    demoCatalog: ready.demoCatalog,
   });
 
   const path = (req.url ?? "/").split("?")[0] ?? "/";

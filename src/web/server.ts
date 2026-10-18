@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { DomainError } from "../core/errors.ts";
 import { rp } from "../core/money.ts";
 import type { StoreService } from "../app/service.ts";
+import { adminPanelHtml } from "./admin-html.ts";
 import { publicOrder, publicProduct } from "./views.ts";
 
 export interface HandlerDeps {
@@ -9,7 +10,6 @@ export interface HandlerDeps {
   adminKey: string;
   sweepSecret: string;
   brand: string;
-  demoCatalog: boolean;
 }
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -24,6 +24,15 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
     "Content-Length": Buffer.byteLength(payload),
   });
   res.end(payload);
+}
+
+function sendHtml(res: ServerResponse, status: number, html: string): void {
+  res.writeHead(status, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Content-Length": Buffer.byteLength(html),
+  });
+  res.end(html);
 }
 
 async function readRawBody(req: IncomingMessage): Promise<string> {
@@ -60,6 +69,9 @@ function errorStatus(code: string): number {
     case "BAD_CALLBACK":
     case "BODY_TOO_LARGE":
     case "BAD_AMOUNT":
+    case "BAD_PRODUCT":
+    case "BAD_STOCK":
+    case "BAD_STATUS":
       return 400;
     case "VARIANT_NOT_FOUND":
     case "ORDER_NOT_FOUND":
@@ -68,6 +80,7 @@ function errorStatus(code: string): number {
     case "PRODUCT_INACTIVE":
     case "DUPLICATE_ORDER":
     case "BAD_TRANSITION":
+    case "VARIANT_HAS_STOCK":
       return 409;
     case "GATEWAY_HTTP":
     case "GATEWAY_BAD_RESPONSE":
@@ -76,6 +89,8 @@ function errorStatus(code: string): number {
       return 500;
   }
 }
+
+const STOCK_STATUSES = new Set(["available", "reserved", "delivered"]);
 
 export function createRequestHandler(deps: HandlerDeps) {
   const orderHits = new Map<string, number[]>();
@@ -100,7 +115,6 @@ export function createRequestHandler(deps: HandlerDeps) {
           ok: true,
           service: "zf-store",
           brand: deps.brand,
-          demoCatalog: deps.demoCatalog,
           storage: deps.service.storage,
         });
         return;
@@ -111,7 +125,6 @@ export function createRequestHandler(deps: HandlerDeps) {
         sendJson(res, 200, {
           ok: true,
           brand: deps.brand,
-          demo: deps.demoCatalog,
           products: products.map((p) => publicProduct(p, stock)),
         });
         return;
@@ -217,33 +230,117 @@ export function createRequestHandler(deps: HandlerDeps) {
         return;
       }
 
-      if (path === "/api/admin/report" && method === "GET") {
-        if (!deps.adminKey || String(headers["x-admin-key"] ?? "") !== deps.adminKey) {
-          sendJson(res, 401, { ok: false, error: "bad admin key" });
-          return;
-        }
-        const [report, recent] = await Promise.all([deps.service.report(), deps.service.recentOrders(20)]);
-        sendJson(res, 200, {
-          ok: true,
-          report,
-          recentOrders: recent.map((o) => ({
-            ...publicOrder(o),
-            buyerContact: o.buyer.contact,
-            deliveryError: o.deliveryError,
-            deliveryAttempts: o.deliveryAttempts,
-          })),
-        });
+      // ── Admin panel ────────────────────────────────────────
+      const isAdmin = deps.adminKey.length > 0 && String(headers["x-admin-key"] ?? "") === deps.adminKey;
+
+      if (path === "/admin" && method === "GET") {
+        sendHtml(res, 200, adminPanelHtml(deps.brand));
         return;
       }
 
-      if (path.startsWith("/api/admin/orders/") && path.endsWith("/cancel") && method === "POST") {
-        if (!deps.adminKey || String(headers["x-admin-key"] ?? "") !== deps.adminKey) {
+      if (path.startsWith("/api/admin/")) {
+        if (!isAdmin) {
           sendJson(res, 401, { ok: false, error: "bad admin key" });
           return;
         }
-        const code = decodeURIComponent(path.slice("/api/admin/orders/".length, -"/cancel".length));
-        const result = await deps.service.cancelOrder(code);
-        sendJson(res, 200, { ok: true, ...result });
+
+
+        if (path === "/api/admin/report" && method === "GET") {
+          const [report, recent] = await Promise.all([deps.service.report(), deps.service.recentOrders(20)]);
+          sendJson(res, 200, {
+            ok: true,
+            report,
+            recentOrders: recent.map((o) => ({
+              ...publicOrder(o),
+              buyerContact: o.buyer.contact,
+              deliveryError: o.deliveryError,
+              deliveryAttempts: o.deliveryAttempts,
+            })),
+          });
+          return;
+        }
+
+        if (path === "/api/admin/catalog" && method === "GET") {
+          const { products, stock } = await deps.service.adminCatalog();
+          sendJson(res, 200, { ok: true, products, stock });
+          return;
+        }
+
+        if (path === "/api/admin/products" && method === "POST") {
+          const body = parseJson(await readRawBody(req));
+          const product = await deps.service.adminSaveProduct(body.product ?? body);
+          sendJson(res, 200, { ok: true, product });
+          return;
+        }
+
+        if (path.startsWith("/api/admin/products/") && path !== "/api/admin/products") {
+          const tail = path.slice("/api/admin/products/".length);
+          const parts = tail.split("/");
+          const slug = decodeURIComponent(parts[0] ?? "");
+          const action = parts[1];
+          if (action === "active" && method === "POST") {
+            const body = parseJson(await readRawBody(req));
+            const product = await deps.service.adminSetActive(slug, Boolean(body.active));
+            if (!product) {
+              sendJson(res, 404, { ok: false, error: "PRODUCT_NOT_FOUND", message: `produk ${slug} tidak ada` });
+              return;
+            }
+            sendJson(res, 200, { ok: true, product });
+            return;
+          }
+          if (action === undefined && method === "DELETE") {
+            const deleted = await deps.service.adminDeleteProduct(slug);
+            sendJson(res, deleted ? 200 : 404, { ok: deleted, deleted: slug });
+            return;
+          }
+          sendJson(res, 404, { ok: false, error: "rute tidak dikenal", path });
+          return;
+        }
+
+        if (path === "/api/admin/stock" && method === "GET") {
+          const variantId = url.searchParams.get("variantId") ?? undefined;
+          const statusParam = url.searchParams.get("status") ?? undefined;
+          if (statusParam !== undefined && !STOCK_STATUSES.has(statusParam)) {
+            sendJson(res, 400, { ok: false, error: "BAD_STATUS", message: `status harus available|reserved|delivered` });
+            return;
+          }
+          const items = await deps.service.adminStock({ variantId, status: statusParam as never, limit: 200 });
+          // Payload stok disamarkan sebagian: panel admin perlu tahu isinya apa,
+          // tapi halaman ini lewat internet — potong ke 8 karakter pertama.
+          sendJson(res, 200, {
+            ok: true,
+            items: items.map((i) => ({ ...i, payload: `${i.payload.slice(0, 8)}…` })),
+          });
+          return;
+        }
+
+        if (path === "/api/admin/stock" && method === "POST") {
+          const body = parseJson(await readRawBody(req));
+          const items = body.items as { variantId: string; payload: string; cost: number }[];
+          const count = await deps.service.addStock(items ?? []);
+          sendJson(res, 200, { ok: true, added: count, stock: await deps.service.stockAvailable() });
+          return;
+        }
+
+        if (path === "/api/admin/payments" && method === "GET") {
+          const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 50) || 50, 1), 200);
+          sendJson(res, 200, { ok: true, payments: await deps.service.adminPayments(limit) });
+          return;
+        }
+
+        if (path.startsWith("/api/admin/orders/") && path.endsWith("/cancel") && method === "POST") {
+          const code = decodeURIComponent(path.slice("/api/admin/orders/".length, -"/cancel".length));
+          const result = await deps.service.cancelOrder(code);
+          sendJson(res, 200, { ok: true, ...result });
+          return;
+        }
+
+        if (path === "/api/admin/sweep" && method === "POST") {
+          sendJson(res, 200, { ok: true, ...(await deps.service.sweep()) });
+          return;
+        }
+
+        sendJson(res, 404, { ok: false, error: "rute tidak dikenal", path });
         return;
       }
 

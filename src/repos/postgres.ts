@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { DomainError } from "../core/errors.ts";
 import { assertTransition } from "../core/order.ts";
-import type { LedgerEntry, Order, OrderStatus, StockItem } from "../core/types.ts";
+import type { LedgerEntry, Order, OrderStatus, Product, StockItem } from "../core/types.ts";
 import type {
   CatalogRepository, LedgerRepository, NewStockItem, OrderRepository, PaymentRecord,
   PaymentRepository, Repositories, SequenceRepository, StockRepository,
@@ -30,7 +30,8 @@ function toStockItem(row: StockRow): StockItem {
 
 export interface PostgresOptions {
   connectionString: string;
-  catalog: CatalogRepository;
+  /** Seed SEKALI saat tabel produk masih kosong (dari data/catalog.json). */
+  seedProducts?: Product[];
   max?: number;
 }
 
@@ -38,6 +39,59 @@ export interface PostgresRepositories extends Repositories {
   close(): Promise<void>;
   verifySchema(): Promise<void>;
 }
+
+function sortProducts(products: Product[]): Product[] {
+  return [...products].sort((a, b) => a.sort - b.sort || a.slug.localeCompare(b.slug));
+}
+
+/**
+ * Katalog di DB: panel admin boleh menulis, isi file katalog lokal cuma modal
+ * awal. Seed terjadi sekali (saat tabel kosong) supaya edit admin tidak pernah
+ * tertimpa ulang oleh file.
+ */
+function dbCatalog(pool: pg.Pool): CatalogRepository {
+  async function all(): Promise<Product[]> {
+    const res = await pool.query<{ payload: Product }>(
+      `SELECT payload FROM zf_products ORDER BY sort, slug`,
+    );
+    return res.rows.map((r) => r.payload);
+  }
+  return {
+    async listProducts() { return sortProducts((await all()).filter((p) => p.active)); },
+    async listAllProducts() { return all(); },
+    async getProduct(slug) { return (await all()).find((p) => p.slug === slug) ?? null; },
+    async getVariant(variantId) {
+      for (const product of await all()) {
+        const variant = product.variants.find((v) => v.id === variantId);
+        if (variant) return { product, variant };
+      }
+      return null;
+    },
+    async upsertProduct(product) {
+      await pool.query(
+        `INSERT INTO zf_products (slug, id, active, sort, payload, updated_at)
+         VALUES ($1, $2, $3, $4, $5::jsonb, now())
+         ON CONFLICT (slug) DO UPDATE
+           SET id = EXCLUDED.id, active = EXCLUDED.active, sort = EXCLUDED.sort,
+               payload = EXCLUDED.payload, updated_at = now()`,
+        [product.slug, product.id, product.active, product.sort, JSON.stringify(product)],
+      );
+    },
+    async setActive(slug, active) {
+      const res = await pool.query<{ payload: Product }>(
+        `UPDATE zf_products SET active = $2, payload = payload || jsonb_build_object('active', $2::boolean), updated_at = now()
+         WHERE slug = $1 RETURNING payload`,
+        [slug, active],
+      );
+      return res.rows[0]?.payload ?? null;
+    },
+    async deleteProduct(slug) {
+      const res = await pool.query(`DELETE FROM zf_products WHERE slug = $1`, [slug]);
+      return (res.rowCount ?? 0) === 1;
+    },
+  };
+}
+
 
 export async function postgresRepositories(opts: PostgresOptions): Promise<PostgresRepositories> {
   const needsSsl = /supabase|sslmode=require|neon\.tech|render\.com/i.test(opts.connectionString);
@@ -72,6 +126,20 @@ export async function postgresRepositories(opts: PostgresOptions): Promise<Postg
       );
       return res.rows.map(toStockItem);
     },
+    async listForAdmin({ variantId, status, limit = 200 }) {
+      const where: string[] = [];
+      const params: unknown[] = [];
+      if (variantId) { params.push(variantId); where.push(`variant_id = $${params.length}`); }
+      if (status) { params.push(status); where.push(`status = $${params.length}`); }
+      params.push(limit);
+      const res = await pool.query<StockRow>(
+        `SELECT * FROM zf_stock ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+         ORDER BY created_at DESC, id DESC LIMIT $${params.length}`,
+        params,
+      );
+      return res.rows.map(toStockItem);
+    },
+
     async countAvailable() {
       const res = await pool.query<{ variant_id: string; n: string }>(
         `SELECT variant_id, count(*)::int AS n FROM zf_stock WHERE status = 'available' GROUP BY variant_id`,
@@ -293,10 +361,11 @@ export async function postgresRepositories(opts: PostgresOptions): Promise<Postg
     },
   };
 
-  const requiredTables = ["zf_stock", "zf_orders", "zf_ledger", "zf_payments", "zf_seq"];
+  const requiredTables = ["zf_stock", "zf_orders", "zf_ledger", "zf_payments", "zf_seq", "zf_products"];
+  const catalog = dbCatalog(pool);
 
   return {
-    catalog: opts.catalog,
+    catalog,
     stock,
     orders,
     ledger,
@@ -313,6 +382,15 @@ export async function postgresRepositories(opts: PostgresOptions): Promise<Postg
       const missing = requiredTables.filter((t) => !found.has(t));
       if (missing.length > 0) {
         throw new DomainError("SCHEMA_MISSING", `tabel belum ada: ${missing.join(", ")} — jalankan npm run migrate`);
+      }
+      // Seed katalog sekali saja: tabel kosong + ada file seed. Setelah admin
+      // menyentuh katalog, file lokal tidak pernah dipakai lagi.
+      if (opts.seedProducts?.length) {
+        const count = await pool.query<{ n: string }>(`SELECT count(*)::int AS n FROM zf_products`);
+        if (Number(count.rows[0]?.n ?? 0) === 0) {
+          for (const product of opts.seedProducts) await catalog.upsertProduct(product);
+          console.log(`[zf-store] katalog dised ke DB dari file: ${opts.seedProducts.length} produk`);
+        }
       }
     },
     async close() {

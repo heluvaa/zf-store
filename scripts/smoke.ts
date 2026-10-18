@@ -27,7 +27,7 @@ process.env.PORT ??= "3199";
 const boot = await bootstrap();
 const handle = createRequestHandler({
   service: boot.service, adminKey: boot.config.adminKey, sweepSecret: boot.config.sweepSecret,
-  brand: boot.brand, demoCatalog: boot.demoCatalog,
+  brand: boot.brand,
 });
 const server = http.createServer((req, res) => { void handle(req, res); });
 await new Promise<void>((resolve) => server.listen(boot.config.port, "127.0.0.1", resolve));

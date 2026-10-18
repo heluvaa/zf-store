@@ -55,3 +55,16 @@ CREATE TABLE IF NOT EXISTS zf_seq (
   day TEXT PRIMARY KEY,
   n   INTEGER NOT NULL
 );
+
+-- Katalog hidup di DB supaya panel admin bisa menulis tanpa menyentuh file.
+-- data/catalog.json hanya seed awal (sekali, saat tabel masih kosong).
+CREATE TABLE IF NOT EXISTS zf_products (
+  slug       TEXT PRIMARY KEY,
+  id         TEXT NOT NULL,
+  active     BOOLEAN NOT NULL DEFAULT true,
+  sort       INTEGER NOT NULL DEFAULT 0,
+  payload    JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS zf_products_list ON zf_products (sort, slug);

@@ -1,4 +1,5 @@
 import { dayKey, orderCode, randomToken } from "../core/codes.ts";
+import { parseProduct } from "../core/catalog.ts";
 import { DomainError } from "../core/errors.ts";
 import { entriesForPaidOrder, summarize, type LedgerSummary } from "../core/ledger.ts";
 import { MAX_PAYMENT, MIN_PAYMENT, rp, assertRupiah } from "../core/money.ts";
@@ -8,7 +9,8 @@ import { totalCost } from "../core/stock.ts";
 import type { Buyer, LedgerEntry, Order, OrderStatus, Product, StockItem } from "../core/types.ts";
 import type { DeliveryStrategy } from "../deliver/digital.ts";
 import { parseGatewayCallback, verifyGatewayCallback, type QrisGateway } from "../gateways/qris.ts";
-import type { Repositories } from "../repos/types.ts";
+import type { PaymentRecord, Repositories } from "../repos/types.ts";
+
 
 export interface ServiceConfig {
   callbackUrl: string;
@@ -141,23 +143,91 @@ export class StoreService {
     return { products, stock };
   }
 
-  /** Isi stok massal (dipakai script seed / panel admin). */
-  async addStock(items: { variantId: string; payload: string; cost: number }[]): Promise<number> {
+  /** Isi stok massal (dipakai script seed / panel admin). `cost` kosong = pakai modal varian dari katalog. */
+  async addStock(items: { variantId: string; payload: string; cost?: number }[]): Promise<number> {
     if (items.length === 0) throw new DomainError("BAD_STOCK", "tidak ada item stok");
-    const cleaned = items.map((item) => {
+    const cleaned: { variantId: string; payload: string; cost: number }[] = [];
+    for (const item of items) {
       const variantId = String(item.variantId ?? "").trim();
       const payload = String(item.payload ?? "").trim();
       if (!variantId) throw new DomainError("BAD_STOCK", "item stok tanpa variantId");
       if (!payload) throw new DomainError("BAD_STOCK", `item stok ${variantId} tanpa payload`);
-      assertRupiah(item.cost, `cost ${variantId}`);
-      return { variantId, payload, cost: item.cost };
-    });
+      const found = await this.repos.catalog.getVariant(variantId);
+      if (!found) throw new DomainError("VARIANT_NOT_FOUND", `varian ${variantId} tidak ada di katalog`);
+      let cost = item.cost;
+      if (cost === undefined || cost === null || (cost as unknown) === "") {
+        cost = found.variant.cost;
+      }
+      assertRupiah(cost, `cost ${variantId}`);
+      cleaned.push({ variantId, payload, cost });
+    }
     return this.repos.stock.addBulk(cleaned);
   }
 
   async stockAvailable(): Promise<Record<string, number>> {
     return this.repos.stock.countAvailable();
   }
+
+  // ── Permukaan admin panel ────────────────────────────────────
+
+  /** Katalog penuh untuk admin: termasuk produk non-aktif, termasuk `cost`. */
+  async adminCatalog(): Promise<{ products: Product[]; stock: Record<string, number> }> {
+    const [products, stock] = await Promise.all([
+      this.repos.catalog.listAllProducts(),
+      this.repos.stock.countAvailable(),
+    ]);
+    return { products, stock };
+  }
+
+  /**
+   * Simpan produk lewat jalur tulis admin: parsing + validasi terjadi di domain
+   * (parseProduct), jadi varian/harga yang masuk bentuknya sudah pasti integer.
+   */
+  async adminSaveProduct(input: unknown): Promise<Product> {
+    const product = parseProduct(input);
+    // Jangan biarkan varian yang sudah terisi stok dihapus diam-diam: stok itu
+    // barang yang sudah dibeli pemilik toko.
+    const existing = await this.repos.catalog.getProduct(product.slug);
+    if (existing) {
+      const counts = await this.repos.stock.countAvailable();
+      const keptIds = new Set(product.variants.map((v) => v.id));
+      const lost = existing.variants.filter((v) => !keptIds.has(v.id) && (counts[v.id] ?? 0) > 0);
+      if (lost.length > 0) {
+        throw new DomainError(
+          "VARIANT_HAS_STOCK",
+          `varian masih punya stok: ${lost.map((v) => `${v.id} (${counts[v.id]})`).join(", ")} — habiskan atau pindahkan dulu`,
+        );
+      }
+    }
+    await this.repos.catalog.upsertProduct(product);
+    return product;
+  }
+
+  async adminSetActive(slug: string, active: boolean): Promise<Product | null> {
+    return this.repos.catalog.setActive(slug, active);
+  }
+
+  async adminDeleteProduct(slug: string): Promise<boolean> {
+    const counts = await this.repos.stock.countAvailable();
+    const product = await this.repos.catalog.getProduct(slug);
+    const withStock = product?.variants.filter((v) => (counts[v.id] ?? 0) > 0) ?? [];
+    if (withStock.length > 0) {
+      throw new DomainError(
+        "VARIANT_HAS_STOCK",
+        `produk ${slug} masih punya stok: ${withStock.map((v) => `${v.id} (${counts[v.id]})`).join(", ")} — habiskan dulu`,
+      );
+    }
+    return this.repos.catalog.deleteProduct(slug);
+  }
+
+  async adminStock(opts: { variantId?: string; status?: StockItem["status"]; limit?: number } = {}): Promise<StockItem[]> {
+    return this.repos.stock.listForAdmin(opts);
+  }
+
+  async adminPayments(limit = 50): Promise<PaymentRecord[]> {
+    return this.repos.payments.list(limit);
+  }
+
 
   /**
    * Checkout. Harga dihitung ulang dari katalog; `items` dari klien hanya memilih

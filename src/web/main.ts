@@ -9,7 +9,6 @@ const handle = createRequestHandler({
   adminKey: boot.config.adminKey,
   sweepSecret: boot.config.sweepSecret,
   brand: boot.brand,
-  demoCatalog: boot.demoCatalog,
 });
 
 const server = http.createServer((req, res) => {

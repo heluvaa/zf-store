@@ -53,6 +53,13 @@ export async function memoryRepositories(catalog: CatalogRepository, opts: Memor
         .sort(fifo)
         .slice(0, limit);
     },
+    async listForAdmin({ variantId, status, limit = 200 }) {
+      return [...stock.values()]
+        .filter((i) => (!variantId || i.variantId === variantId) && (!status || i.status === status))
+        .sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1))
+        .slice(0, limit);
+    },
+
     async countAvailable() {
       const out: Record<string, number> = {};
       for (const item of stock.values()) {

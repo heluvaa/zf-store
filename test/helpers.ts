@@ -181,7 +181,7 @@ export function seedFor(variantId: string, count: number, cost = 19_000): NewSto
   return Array.from({ length: count }, (_, i) => ({ variantId, payload: `KODE-${variantId}-${i + 1}`, cost }));
 }
 
-export async function startServer(service: StoreService, opts: { brand?: string; demo?: boolean } = {}): Promise<{
+export async function startServer(service: StoreService, opts: { brand?: string } = {}): Promise<{
   url: string; close(): Promise<void>;
 }> {
   const handle = createRequestHandler({
@@ -189,7 +189,6 @@ export async function startServer(service: StoreService, opts: { brand?: string;
     adminKey: ADMIN_KEY,
     sweepSecret: SWEEP_KEY,
     brand: opts.brand ?? "ZF Store",
-    demoCatalog: opts.demo ?? false,
   });
   const server = http.createServer((req, res) => { void handle(req, res); });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

@@ -4,7 +4,7 @@ import { bootstrap } from "../src/app/bootstrap.ts";
 import type { NewStockItem } from "../src/repos/types.ts";
 
 /**
- * Isi stok massal dari data/stock.seed.json:
+ * Isi stok massal dari file JSON:
  *   [{ "variantId": "v_stream_1m", "payload": "KODE-XXXX", "cost": 19000 }]
  * `cost` boleh dikosongkan: harga `cost` varian dari katalog yang dipakai.
  */
@@ -24,19 +24,11 @@ if (!Array.isArray(items) || items.length === 0) {
 
 const boot = await bootstrap();
 try {
-  const { products } = await boot.service.catalog();
-  const variants = new Map(products.flatMap((p) => p.variants).map((v) => [v.id, v]));
-  const filled: NewStockItem[] = [];
-  for (const item of items) {
-    const variant = variants.get(item.variantId);
-    if (!variant) console.warn(`peringatan: varian ${item.variantId} tidak ada di katalog aktif`);
-    filled.push({
-      variantId: item.variantId,
-      payload: item.payload,
-      cost: Number.isInteger(item.cost) ? item.cost : variant?.price ?? 0,
-    });
-  }
-  const count = await boot.service.addStock(filled);
+  const count = await boot.service.addStock(items.map((item) => ({
+    variantId: item.variantId,
+    payload: item.payload,
+    cost: Number.isInteger(item.cost) && item.cost >= 0 ? item.cost : undefined,
+  })));
   console.log(`stok ditambahkan: ${count} item`);
   console.log(`stok tersedia: ${JSON.stringify(await boot.service.stockAvailable())}`);
   console.log(`storage: ${boot.service.storage.backend} (durable=${boot.service.storage.durable})`);

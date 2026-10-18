@@ -1,10 +1,19 @@
 import type { LedgerEntry, Order, OrderStatus, Product, StockItem } from "../core/types.ts";
 
-/** Katalog dibaca dari satu file data, bukan dari kode. */
+/**
+ * Katalog dengan tulis. Implementasi: file (dev lokal), DB (produksi), memory
+ * (test). `listProducts` hanya produk aktif; admin melihat semuanya lewat
+ * `listAllProducts`.
+ */
 export interface CatalogRepository {
   listProducts(): Promise<Product[]>;
+  listAllProducts(): Promise<Product[]>;
   getProduct(slug: string): Promise<Product | null>;
   getVariant(variantId: string): Promise<{ product: Product; variant: Product["variants"][number] } | null>;
+  /** Insert atau update berdasarkan slug. Validasi sudah terjadi di domain. */
+  upsertProduct(product: Product): Promise<void>;
+  setActive(slug: string, active: boolean): Promise<Product | null>;
+  deleteProduct(slug: string): Promise<boolean>;
 }
 
 export interface NewStockItem {
@@ -17,6 +26,8 @@ export interface StockRepository {
   addBulk(items: NewStockItem[]): Promise<number>;
   listAvailable(variantId: string, limit?: number): Promise<StockItem[]>;
   countAvailable(): Promise<Record<string, number>>;
+  /** Untuk panel admin: daftar stok per varian (semua status) atau global per status. */
+  listForAdmin(opts: { variantId?: string; status?: StockItem["status"]; limit?: number }): Promise<StockItem[]>;
   /**
    * Ambil `qty` item FIFO untuk satu order secara atomik (compare-and-swap).
    * Gagal = tidak ada yang tertahan (rollback), lalu lempar DomainError INSUFFICIENT_STOCK.
